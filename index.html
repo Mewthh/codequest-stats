@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CodeQuest Admin Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="page-loader" class="page-loader hidden" aria-live="polite" aria-label="Loading">
+      <div class="loader"></div>
+      <p id="page-loader-text" class="loader-text">Signing in...</p>
+    </div>
+
+    <main class="auth-layout">
+      <section class="auth-card">
+        <p class="eyebrow">CodeQuest Website</p>
+        <h1>Admin Login</h1>
+
+        <form id="auth-form" class="auth-form">
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text" autocomplete="username" required />
+
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+          <label class="toggle-row" for="show-password">
+            <input id="show-password" type="checkbox" />
+            Show password
+          </label>
+
+          <button id="login-btn" type="submit">Sign in as admin</button>
+          <button id="signup-btn" type="button" class="ghost-btn">Create admin account</button>
+        </form>
+
+        <p id="status" class="status" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <script type="module" src="./login.js"></script>
+  </body>
+</html>

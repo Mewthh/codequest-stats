@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CodeQuest Admin Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="page-loader" class="page-loader hidden" aria-live="polite" aria-label="Loading">
+      <div class="loader"></div>
+      <p id="page-loader-text" class="loader-text">Signing out...</p>
+    </div>
+
+    <main class="dashboard-layout">
+      <header class="dashboard-header">
+        <div class="header-left">
+          <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Toggle dashboard menu">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <div>
+            <p class="eyebrow">CodeQuest Website</p>
+            <h1>Admin Dashboard</h1>
+            <p id="admin-label" class="muted"></p>
+          </div>
+        </div>
+        <button id="signout-btn" class="ghost-btn" type="button">Sign out</button>
+      </header>
+
+      <nav id="dashboard-menu" class="dashboard-menu" aria-label="Dashboard sections">
+        <button class="menu-link active" type="button" data-target-part="stats-part">Stats Overview</button>
+        <button class="menu-link" type="button" data-target-part="editor-part">Quiz Editor</button>
+      </nav>
+
+      <section class="dashboard-part" id="stats-part">
+        <div class="part-header">
+          <p class="part-kicker">Part 1</p>
+          <h2>Stats Overview</h2>
+        </div>
+
+        <section id="student-picker-view" class="panel student-picker-view">
+          <div class="panel-title-row">
+            <h3>Select Student</h3>
+            <p id="students-count" class="mini-stat">0</p>
+          </div>
+          <p class="muted">Choose a student to open detailed Java/C# level stats and achievements.</p>
+          <div id="students-list" class="students-list students-list-picker"></div>
+        </section>
+
+        <section id="student-detail-view" class="hidden student-detail-view">
+          <div class="panel detail-header-panel">
+            <div class="panel-title-row">
+              <button id="back-to-students-btn" type="button" class="ghost-btn compact-btn">Back to students</button>
+              <h3>Student Detail</h3>
+            </div>
+
+            <section class="stats-grid student-overview-grid">
+              <article class="stat-card">
+                <h3>Selected Student</h3>
+                <p id="selected-student-name" class="stat-name">-</p>
+              </article>
+              <article class="stat-card">
+                <h3>Completed Levels</h3>
+                <p id="completed-count">0</p>
+              </article>
+              <article class="stat-card">
+                <h3>Completed Achievements</h3>
+                <p id="achievements-count">0</p>
+              </article>
+            </section>
+          </div>
+
+          <section class="levels-detail-layout">
+            <div class="language-panels-grid">
+              <article class="panel language-panel">
+                <h3>Java</h3>
+                <p class="toolbar-label">Quiz Levels</p>
+                <div id="java-quiz-levels" class="level-grid"></div>
+                <p class="toolbar-label">Puzzle Levels</p>
+                <div id="java-puzzle-levels" class="level-grid"></div>
+              </article>
+
+              <article class="panel language-panel">
+                <h3>C#</h3>
+                <p class="toolbar-label">Quiz Levels</p>
+                <div id="csharp-quiz-levels" class="level-grid"></div>
+                <p class="toolbar-label">Puzzle Levels</p>
+                <div id="csharp-puzzle-levels" class="level-grid"></div>
+              </article>
+            </div>
+
+            <aside class="panel level-detail-panel">
+              <h3>Level Detail</h3>
+              <p id="selected-level-name" class="muted level-name">Select a level</p>
+              <div class="level-detail-grid">
+                <div class="detail-item">
+                  <p>Status</p>
+                  <strong id="level-completion">-</strong>
+                </div>
+                <div class="detail-item">
+                  <p>Failed Attempts</p>
+                  <strong id="level-failed-attempts">0</strong>
+                </div>
+                <div class="detail-item">
+                  <p>Hints Used</p>
+                  <strong id="level-hints-used">0</strong>
+                </div>
+              </div>
+            </aside>
+          </section>
+        </section>
+      </section>
+
+      <section class="dashboard-part hidden" id="editor-part">
+        <div class="part-header">
+          <p class="part-kicker">Part 2</p>
+          <h2>Quiz Editor Design</h2>
+          <p class="muted editor-note">UI only for now. Save behavior can be wired later.</p>
+        </div>
+
+        <section class="panel editor-toolbar">
+          <div class="toolbar-row">
+            <div class="toolbar-group">
+              <p class="toolbar-label">Language</p>
+              <div id="language-buttons" class="pill-row" aria-label="Language selector"></div>
+            </div>
+
+            <div class="toolbar-group">
+              <p class="toolbar-label">Level</p>
+              <div id="level-buttons" class="pill-row" aria-label="Level selector"></div>
+            </div>
+          </div>
+
+          <div class="toolbar-row">
+            <div class="toolbar-group grow">
+              <p class="toolbar-label">Quiz Count (1 to 5 per level)</p>
+              <div class="count-control">
+                <button id="remove-question-btn" type="button" class="ghost-btn compact-btn">Remove Quiz</button>
+                <p id="question-count-badge" class="count-badge">5 / 5</p>
+                <button id="add-question-btn" type="button" class="ghost-btn compact-btn">Add Quiz</button>
+              </div>
+            </div>
+
+            <div class="toolbar-group align-end">
+              <button id="save-layout-btn" type="button" class="compact-btn">Save Quiz Layout</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="question-editor-list" class="question-editor-list"></section>
+      </section>
+
+      <p id="dashboard-status" class="status" aria-live="polite"></p>
+    </main>
+
+    <script type="module" src="./dashboard.js"></script>
+  </body>
+</html>

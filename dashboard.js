@@ -1,0 +1,644 @@
+import { supabase, emailToUsername, isAdminUsername } from "./lib/auth.js";
+
+requestAnimationFrame(() => {
+  document.body.classList.add("page-entered");
+});
+
+const adminLabel = document.getElementById("admin-label");
+const statusEl = document.getElementById("dashboard-status");
+
+const studentPickerViewEl = document.getElementById("student-picker-view");
+const studentDetailViewEl = document.getElementById("student-detail-view");
+const backToStudentsBtn = document.getElementById("back-to-students-btn");
+
+const studentsCountEl = document.getElementById("students-count");
+const studentsListEl = document.getElementById("students-list");
+const selectedStudentNameEl = document.getElementById("selected-student-name");
+const completedCountEl = document.getElementById("completed-count");
+const achievementsCountEl = document.getElementById("achievements-count");
+
+const javaQuizLevelsEl = document.getElementById("java-quiz-levels");
+const javaPuzzleLevelsEl = document.getElementById("java-puzzle-levels");
+const csharpQuizLevelsEl = document.getElementById("csharp-quiz-levels");
+const csharpPuzzleLevelsEl = document.getElementById("csharp-puzzle-levels");
+
+const selectedLevelNameEl = document.getElementById("selected-level-name");
+const levelCompletionEl = document.getElementById("level-completion");
+const levelFailedAttemptsEl = document.getElementById("level-failed-attempts");
+const levelHintsUsedEl = document.getElementById("level-hints-used");
+
+const languageButtonsEl = document.getElementById("language-buttons");
+const levelButtonsEl = document.getElementById("level-buttons");
+const questionCountBadgeEl = document.getElementById("question-count-badge");
+const removeQuestionBtn = document.getElementById("remove-question-btn");
+const addQuestionBtn = document.getElementById("add-question-btn");
+const saveLayoutBtn = document.getElementById("save-layout-btn");
+const questionEditorList = document.getElementById("question-editor-list");
+const menuToggleBtn = document.getElementById("menu-toggle");
+const dashboardMenu = document.getElementById("dashboard-menu");
+const pageLoader = document.getElementById("page-loader");
+const pageLoaderText = document.getElementById("page-loader-text");
+const TRANSITION_DELAY_MS = 520;
+
+const QUIZ_MIN = 1;
+const QUIZ_MAX = 5;
+const LANGUAGES = [
+  { value: "java", label: "Java" },
+  { value: "csharp", label: "C#" },
+];
+const LEVELS = [1, 2, 3];
+const CHOICE_LETTERS = ["A", "B", "C", "D"];
+
+const editorState = {
+  language: "java",
+  level: 1,
+};
+
+const quizEditorStore = {};
+
+const dashboardParts = Array.from(document.querySelectorAll(".dashboard-part"));
+const menuLinks = Array.from(document.querySelectorAll(".menu-link"));
+
+const LEVEL_GROUPS = {
+  java: {
+    quiz: ["java_quiz_1", "java_quiz_2", "java_quiz_3"],
+    puzzle: ["java_puzzle_1", "java_puzzle_2", "java_puzzle_3"],
+  },
+  csharp: {
+    quiz: ["csharp_quiz_1", "csharp_quiz_2", "csharp_quiz_3"],
+    puzzle: ["csharp_puzzle_1", "csharp_puzzle_2", "csharp_puzzle_3"],
+  },
+};
+
+const statsState = {
+  students: [],
+  selectedStudentId: null,
+  selectedStudentLabel: "-",
+  selectedLevelKey: "java_quiz_1",
+  progressByLevel: {},
+  metricsByLevel: {},
+  unlockedAchievements: [],
+};
+
+function setStatus(message, kind = "") {
+  statusEl.textContent = message;
+  statusEl.className = `status ${kind}`.trim();
+}
+
+function asNumber(value) {
+  return Number(value || 0);
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function redirectToLogin() {
+  window.location.href = "./index.html";
+}
+
+function redirectToLoginAnimated() {
+  if (pageLoaderText) {
+    pageLoaderText.textContent = "Signing out...";
+  }
+  pageLoader?.classList.remove("hidden");
+  document.body.classList.add("page-leaving");
+  window.setTimeout(() => {
+    window.location.href = "./index.html";
+  }, TRANSITION_DELAY_MS);
+}
+
+function animateIn(element) {
+  if (!element) return;
+  element.classList.remove("screen-animate");
+  void element.offsetWidth;
+  element.classList.add("screen-animate");
+}
+
+function flattenMainLevelKeys() {
+  return [
+    ...LEVEL_GROUPS.java.quiz,
+    ...LEVEL_GROUPS.java.puzzle,
+    ...LEVEL_GROUPS.csharp.quiz,
+    ...LEVEL_GROUPS.csharp.puzzle,
+  ];
+}
+
+function toLevelLabel(levelKey) {
+  if (!levelKey) return "-";
+  const parts = levelKey.split("_");
+  if (parts.length < 3) return levelKey;
+
+  const languageLabel = parts[0] === "csharp" ? "C#" : "Java";
+  const typeLabel = parts[1] === "puzzle" ? "Puzzle" : "Quiz";
+  const levelNo = parts[2];
+  const isCheckpoint = levelKey.endsWith("_p1");
+  return isCheckpoint
+    ? `${languageLabel} ${typeLabel} Level ${levelNo} Problem 1`
+    : `${languageLabel} ${typeLabel} Level ${levelNo}`;
+}
+
+function getMetricForLevel(levelKey) {
+  return (
+    statsState.metricsByLevel[levelKey] || {
+      failed_attempts_total: 0,
+      hints_used_total: 0,
+    }
+  );
+}
+
+function renderStudents() {
+  studentsCountEl.textContent = String(statsState.students.length);
+
+  if (statsState.students.length === 0) {
+    studentsListEl.innerHTML = "<p class='muted'>No students available.</p>";
+    return;
+  }
+
+  studentsListEl.innerHTML = statsState.students
+    .map((student) => {
+      const activeClass = student.id === statsState.selectedStudentId ? "active" : "";
+      return `<button type="button" class="student-btn ${activeClass}" data-student-id="${student.id}">${escapeHtml(
+        student.label
+      )}</button>`;
+    })
+    .join("");
+}
+
+function showStudentPickerView() {
+  studentPickerViewEl.classList.remove("hidden");
+  studentDetailViewEl.classList.add("hidden");
+  animateIn(studentPickerViewEl);
+}
+
+function showStudentDetailView() {
+  studentPickerViewEl.classList.add("hidden");
+  studentDetailViewEl.classList.remove("hidden");
+  animateIn(studentDetailViewEl);
+}
+
+function renderLevelGroup(containerEl, levelKeys) {
+  containerEl.innerHTML = levelKeys
+    .map((levelKey) => {
+      const done = Boolean(statsState.progressByLevel[levelKey]);
+      const active = statsState.selectedLevelKey === levelKey;
+      const statusLabel = done ? "Completed" : "Not done";
+      const cls = `${done ? "done" : "not-done"} ${active ? "active" : ""}`;
+      return `
+        <button type="button" class="level-chip ${cls}" data-level-key="${levelKey}">
+          <span>${escapeHtml(toLevelLabel(levelKey))}</span>
+          <span class="status-pill">${statusLabel}</span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function renderAllLevelGroups() {
+  renderLevelGroup(javaQuizLevelsEl, LEVEL_GROUPS.java.quiz);
+  renderLevelGroup(javaPuzzleLevelsEl, LEVEL_GROUPS.java.puzzle);
+  renderLevelGroup(csharpQuizLevelsEl, LEVEL_GROUPS.csharp.quiz);
+  renderLevelGroup(csharpPuzzleLevelsEl, LEVEL_GROUPS.csharp.puzzle);
+}
+
+function renderLevelDetail() {
+  const key = statsState.selectedLevelKey;
+  if (!key) {
+    selectedLevelNameEl.textContent = "Select a level";
+    levelCompletionEl.textContent = "-";
+    levelFailedAttemptsEl.textContent = "0";
+    levelHintsUsedEl.textContent = "0";
+    return;
+  }
+
+  selectedLevelNameEl.textContent = toLevelLabel(key);
+  const done = Boolean(statsState.progressByLevel[key]);
+  const metric = getMetricForLevel(key);
+
+  levelCompletionEl.textContent = done ? "Completed" : "Not done";
+  levelFailedAttemptsEl.textContent = String(asNumber(metric.failed_attempts_total));
+  levelHintsUsedEl.textContent = String(asNumber(metric.hints_used_total));
+}
+
+function renderStudentSummary() {
+  selectedStudentNameEl.textContent = statsState.selectedStudentLabel || "-";
+
+  const completedCount = flattenMainLevelKeys().filter((key) => Boolean(statsState.progressByLevel[key])).length;
+  completedCountEl.textContent = String(completedCount);
+  achievementsCountEl.textContent = String(statsState.unlockedAchievements.length);
+
+  renderAllLevelGroups();
+  renderLevelDetail();
+}
+
+async function loadStudentList(adminUser) {
+  let students = [];
+  const adminId = adminUser?.id || "";
+
+  const profilesRes = await supabase.from("profiles").select("id,username").order("username", { ascending: true });
+
+  if (!profilesRes.error && profilesRes.data?.length) {
+    students = profilesRes.data
+      .map((row) => ({
+        id: row.id,
+        label: row.username || `student_${String(row.id).slice(0, 6)}`,
+      }))
+      .filter((student) => student.id !== adminId && !isAdminUsername(student.label));
+  }
+
+  if (students.length === 0) {
+    const fallbackRes = await supabase.from("user_level_progress").select("user_id");
+    if (!fallbackRes.error && fallbackRes.data?.length) {
+      const seen = new Set();
+      students = fallbackRes.data
+        .map((row) => row.user_id)
+        .filter((id) => {
+          if (!id || seen.has(id) || id === adminId) return false;
+          seen.add(id);
+          return true;
+        })
+        .map((id) => ({ id, label: `student_${String(id).slice(0, 6)}` }));
+    }
+  }
+
+  statsState.students = students;
+  renderStudents();
+
+  if (students.length > 0) {
+    setStatus("Select a student to view detailed stats.", "ok");
+  } else {
+    setStatus("No student records found (admin excluded).", "error");
+  }
+}
+
+async function selectStudent(studentId) {
+  const selected = statsState.students.find((student) => student.id === studentId);
+  if (!selected) return;
+
+  statsState.selectedStudentId = studentId;
+  statsState.selectedStudentLabel = selected.label;
+  renderStudents();
+
+  const [progressRes, metricsRes, userAchievementsRes] = await Promise.all([
+    supabase.from("user_level_progress").select("level_key,completed").eq("user_id", studentId),
+    supabase
+      .from("user_level_metrics")
+      .select("level_key,failed_attempts_total,hints_used_total")
+      .eq("user_id", studentId),
+    supabase.from("user_achievements").select("achievement_id").eq("user_id", studentId),
+  ]);
+
+  if (progressRes.error || metricsRes.error || userAchievementsRes.error) {
+    setStatus("Could not load selected student stats. Check table policies for admin access.", "error");
+    statsState.progressByLevel = {};
+    statsState.metricsByLevel = {};
+    statsState.unlockedAchievements = [];
+    renderStudentSummary();
+    return;
+  }
+
+  const progressMap = {};
+  for (const row of progressRes.data || []) {
+    progressMap[row.level_key] = Boolean(row.completed);
+  }
+
+  const metricsMap = {};
+  for (const row of metricsRes.data || []) {
+    metricsMap[row.level_key] = {
+      failed_attempts_total: asNumber(row.failed_attempts_total),
+      hints_used_total: asNumber(row.hints_used_total),
+    };
+  }
+
+  const unlockedAchievements = userAchievementsRes.data || [];
+
+  statsState.progressByLevel = progressMap;
+  statsState.metricsByLevel = metricsMap;
+  statsState.unlockedAchievements = unlockedAchievements;
+
+  if (!statsState.selectedLevelKey) {
+    statsState.selectedLevelKey = "java_quiz_1";
+  }
+
+  renderStudentSummary();
+  showStudentDetailView();
+  setStatus(`Loaded stats for ${selected.label}.`, "ok");
+}
+
+function setupStatsListeners() {
+  studentsListEl.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-student-id]");
+    if (!button) return;
+    await selectStudent(button.dataset.studentId);
+  });
+
+  backToStudentsBtn.addEventListener("click", () => {
+    showStudentPickerView();
+    setStatus("Select another student.", "ok");
+  });
+
+  const levelContainers = [javaQuizLevelsEl, javaPuzzleLevelsEl, csharpQuizLevelsEl, csharpPuzzleLevelsEl];
+  for (const container of levelContainers) {
+    container.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-level-key]");
+      if (!button) return;
+      statsState.selectedLevelKey = button.dataset.levelKey;
+      renderAllLevelGroups();
+      renderLevelDetail();
+    });
+  }
+}
+
+function setActivePart(partId) {
+  let activePart = null;
+  dashboardParts.forEach((part) => {
+    const isActive = part.id === partId;
+    part.classList.toggle("hidden", !isActive);
+    if (isActive) {
+      activePart = part;
+    }
+  });
+
+  menuLinks.forEach((link) => {
+    link.classList.toggle("active", link.dataset.targetPart === partId);
+  });
+
+  animateIn(activePart);
+}
+
+function setupDashboardMenu() {
+  dashboardMenu.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-target-part]");
+    if (!button) return;
+
+    const targetPart = button.dataset.targetPart;
+    setActivePart(targetPart);
+    dashboardMenu.classList.remove("open");
+  });
+
+  menuToggleBtn.addEventListener("click", () => {
+    dashboardMenu.classList.toggle("open");
+  });
+}
+
+function makeEmptyQuestion(index) {
+  return {
+    prompt: "",
+    choices: ["", "", "", ""],
+    correctChoice: "A",
+    answer: "",
+    isSyntax: false,
+    syntaxSnippet: "",
+    syntaxAnswer: "",
+    title: `Quiz ${index + 1}`,
+  };
+}
+
+function getEditorKey() {
+  return `${editorState.language}:level${editorState.level}`;
+}
+
+function ensureEditorBundle() {
+  const key = getEditorKey();
+  if (!quizEditorStore[key]) {
+    quizEditorStore[key] = {
+      count: QUIZ_MAX,
+      questions: Array.from({ length: QUIZ_MAX }, (_, idx) => makeEmptyQuestion(idx)),
+    };
+  }
+  return quizEditorStore[key];
+}
+
+function renderLanguageButtons() {
+  languageButtonsEl.innerHTML = LANGUAGES.map((language) => {
+    const activeClass = language.value === editorState.language ? "active" : "";
+    return `<button type="button" class="pill-btn ${activeClass}" data-language="${language.value}">${language.label}</button>`;
+  }).join("");
+}
+
+function renderLevelButtons() {
+  levelButtonsEl.innerHTML = LEVELS.map((level) => {
+    const activeClass = level === editorState.level ? "active" : "";
+    return `<button type="button" class="pill-btn ${activeClass}" data-level="${level}">Level ${level}</button>`;
+  }).join("");
+}
+
+function updateQuestionCountUi() {
+  const bundle = ensureEditorBundle();
+  questionCountBadgeEl.textContent = `${bundle.count} / ${QUIZ_MAX}`;
+  removeQuestionBtn.disabled = bundle.count <= QUIZ_MIN;
+  addQuestionBtn.disabled = bundle.count >= QUIZ_MAX;
+}
+
+function renderQuestionEditors() {
+  const bundle = ensureEditorBundle();
+  questionEditorList.innerHTML = bundle.questions
+    .slice(0, bundle.count)
+    .map((question, index) => {
+      const choicesHtml = CHOICE_LETTERS.map((letter, choiceIdx) => {
+        const choiceValue = escapeHtml(question.choices[choiceIdx]);
+        return `
+          <div class="choice-item">
+            <label class="mini-label" for="q-${index}-choice-${choiceIdx}">${letter} Choice</label>
+            <input id="q-${index}-choice-${choiceIdx}" type="text" data-q-index="${index}" data-field="choice" data-choice-index="${choiceIdx}" value="${choiceValue}" placeholder="Type choice ${letter}" />
+          </div>
+        `;
+      }).join("");
+
+      const answerValue = escapeHtml(question.answer);
+      const promptValue = escapeHtml(question.prompt);
+      const syntaxSnippet = escapeHtml(question.syntaxSnippet);
+      const syntaxAnswer = escapeHtml(question.syntaxAnswer);
+      const syntaxHidden = question.isSyntax ? "" : "hidden";
+
+      return `
+        <article class="question-card" data-card-index="${index}">
+          <header>
+            <h3>${escapeHtml(question.title)}</h3>
+            <p class="q-index">QUIZ #${index + 1}</p>
+          </header>
+
+          <div class="question-form">
+            <label class="field-label" for="q-${index}-prompt">Question</label>
+            <textarea id="q-${index}-prompt" data-q-index="${index}" data-field="prompt" placeholder="Write the quiz question here">${promptValue}</textarea>
+
+            <div class="choices-grid">
+              ${choicesHtml}
+            </div>
+
+            <div class="inline-grid">
+              <div>
+                <label class="field-label" for="q-${index}-answer">Answer / Explanation</label>
+                <input id="q-${index}-answer" type="text" data-q-index="${index}" data-field="answer" value="${answerValue}" placeholder="Expected answer or explanation" />
+              </div>
+              <div>
+                <label class="field-label" for="q-${index}-correct">Correct Choice</label>
+                <select id="q-${index}-correct" data-q-index="${index}" data-field="correctChoice">
+                  ${CHOICE_LETTERS.map((letter) => {
+                    const selected = question.correctChoice === letter ? "selected" : "";
+                    return `<option value="${letter}" ${selected}>${letter}</option>`;
+                  }).join("")}
+                </select>
+              </div>
+            </div>
+
+            <label class="toggle-inline" for="q-${index}-syntax-toggle">
+              <input id="q-${index}-syntax-toggle" type="checkbox" data-q-index="${index}" data-field="isSyntax" ${
+                question.isSyntax ? "checked" : ""
+              } />
+              Treat this as a syntax problem
+            </label>
+
+            <div class="syntax-wrap ${syntaxHidden}" data-syntax-block="${index}">
+              <label class="field-label" for="q-${index}-snippet">Syntax Snippet</label>
+              <textarea id="q-${index}-snippet" data-q-index="${index}" data-field="syntaxSnippet" placeholder="Paste buggy syntax or code sample">${syntaxSnippet}</textarea>
+              <label class="field-label" for="q-${index}-syntax-answer">Fixed Syntax Answer</label>
+              <input id="q-${index}-syntax-answer" type="text" data-q-index="${index}" data-field="syntaxAnswer" value="${syntaxAnswer}" placeholder="Write the corrected syntax" />
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function updateEditorUi() {
+  ensureEditorBundle();
+  renderLanguageButtons();
+  renderLevelButtons();
+  updateQuestionCountUi();
+  renderQuestionEditors();
+}
+
+function updateQuestionField(target) {
+  const qIndex = Number(target.dataset.qIndex);
+  if (Number.isNaN(qIndex)) return;
+
+  const bundle = ensureEditorBundle();
+  const question = bundle.questions[qIndex];
+  if (!question) return;
+
+  const field = target.dataset.field;
+  if (field === "choice") {
+    const choiceIndex = Number(target.dataset.choiceIndex);
+    if (!Number.isNaN(choiceIndex)) {
+      question.choices[choiceIndex] = target.value;
+    }
+    return;
+  }
+
+  if (field === "isSyntax") {
+    question.isSyntax = target.checked;
+    renderQuestionEditors();
+    return;
+  }
+
+  if (field in question) {
+    question[field] = target.value;
+  }
+}
+
+function setupEditorListeners() {
+  languageButtonsEl.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-language]");
+    if (!button) return;
+    editorState.language = button.dataset.language;
+    updateEditorUi();
+  });
+
+  levelButtonsEl.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-level]");
+    if (!button) return;
+    editorState.level = Number(button.dataset.level);
+    updateEditorUi();
+  });
+
+  removeQuestionBtn.addEventListener("click", () => {
+    const bundle = ensureEditorBundle();
+    if (bundle.count <= QUIZ_MIN) {
+      setStatus("Minimum is 1 quiz per level.", "error");
+      return;
+    }
+    bundle.count -= 1;
+    updateQuestionCountUi();
+    renderQuestionEditors();
+    setStatus("Removed one quiz card from this level design.", "ok");
+  });
+
+  addQuestionBtn.addEventListener("click", () => {
+    const bundle = ensureEditorBundle();
+    if (bundle.count >= QUIZ_MAX) {
+      setStatus("Maximum is 5 quizzes per level.", "error");
+      return;
+    }
+    bundle.count += 1;
+    updateQuestionCountUi();
+    renderQuestionEditors();
+    setStatus("Added one quiz card back to this level design.", "ok");
+  });
+
+  saveLayoutBtn.addEventListener("click", () => {
+    setStatus("UI design ready. Save logic can be connected to Supabase next.", "ok");
+  });
+
+  questionEditorList.addEventListener("input", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (!target.dataset.qIndex) return;
+    updateQuestionField(target);
+  });
+
+  questionEditorList.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (!target.dataset.qIndex) return;
+    updateQuestionField(target);
+  });
+}
+
+async function requireAdminSession() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.user) {
+    redirectToLogin();
+    return null;
+  }
+
+  const user = data.session.user;
+  const adminUsername = emailToUsername(user.email || "");
+  if (!isAdminUsername(adminUsername)) {
+    await supabase.auth.signOut();
+    setStatus("This account is not allowed to view admin stats.", "error");
+    setTimeout(redirectToLogin, 1200);
+    return null;
+  }
+
+  adminLabel.textContent = `Signed in as ${adminUsername}`;
+  return user;
+}
+
+async function boot() {
+  const user = await requireAdminSession();
+  if (!user) return;
+
+  setupDashboardMenu();
+  setActivePart("stats-part");
+  showStudentPickerView();
+
+  setupStatsListeners();
+  await loadStudentList(user);
+
+  setupEditorListeners();
+  updateEditorUi();
+}
+
+document.getElementById("signout-btn").addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  redirectToLoginAnimated();
+});
+
+boot();
