@@ -13,6 +13,7 @@ const backToStudentsBtn = document.getElementById("back-to-students-btn");
 
 const studentsCountEl = document.getElementById("students-count");
 const studentsListEl = document.getElementById("students-list");
+const studentSearchEl = document.getElementById("student-search");
 const selectedStudentNameEl = document.getElementById("selected-student-name");
 const completedCountEl = document.getElementById("completed-count");
 const achievementsCountEl = document.getElementById("achievements-count");
@@ -72,6 +73,7 @@ const LEVEL_GROUPS = {
 
 const statsState = {
   students: [],
+  studentSearch: "",
   selectedStudentId: null,
   selectedStudentLabel: "-",
   selectedLevelKey: "java_quiz_1",
@@ -79,6 +81,25 @@ const statsState = {
   metricsByLevel: {},
   unlockedAchievements: [],
 };
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replaceAll("_", " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getVisibleStudents() {
+  const query = normalizeSearchText(statsState.studentSearch);
+  if (!query) {
+    return statsState.students;
+  }
+
+  return statsState.students.filter((student) => normalizeSearchText(student.searchText || student.label).includes(query));
+}
 
 function setStatus(message, kind = "") {
   statusEl.textContent = message;
@@ -153,19 +174,38 @@ function getMetricForLevel(levelKey) {
 }
 
 function renderStudents() {
-  studentsCountEl.textContent = String(statsState.students.length);
+  const visibleStudents = getVisibleStudents();
+  const totalStudents = statsState.students.length;
+  studentsCountEl.textContent = statsState.studentSearch ? `${visibleStudents.length}/${totalStudents}` : String(totalStudents);
 
-  if (statsState.students.length === 0) {
+  if (totalStudents === 0) {
     studentsListEl.innerHTML = "<p class='muted'>No students available.</p>";
     return;
   }
 
-  studentsListEl.innerHTML = statsState.students
+  if (visibleStudents.length === 0) {
+    studentsListEl.innerHTML = "<p class='muted'>No students match that search.</p>";
+    return;
+  }
+
+  studentsListEl.innerHTML = visibleStudents
     .map((student) => {
+      const label = student.label || "student";
+      const initials = label.slice(0, 1).toUpperCase();
+      const shortId = String(student.id).slice(0, 8);
       const activeClass = student.id === statsState.selectedStudentId ? "active" : "";
-      return `<button type="button" class="student-btn ${activeClass}" data-student-id="${student.id}">${escapeHtml(
-        student.label
-      )}</button>`;
+      return `
+        <button type="button" class="student-btn ${activeClass}" data-student-id="${student.id}">
+          <span class="student-main">
+            <span class="student-avatar">${escapeHtml(initials)}</span>
+            <span class="student-meta">
+              <strong>${escapeHtml(label)}</strong>
+              <small>ID ${escapeHtml(shortId)}</small>
+            </span>
+          </span>
+          <span class="student-open">Open</span>
+        </button>
+      `;
     })
     .join("");
 }
@@ -240,14 +280,25 @@ async function loadStudentList(adminUser) {
   let students = [];
   const adminId = adminUser?.id || "";
 
-  const profilesRes = await supabase.from("profiles").select("id,username").order("username", { ascending: true });
+  const profilesRes = await supabase
+    .from("profiles")
+    .select("id,username,display_name")
+    .order("username", { ascending: true });
 
   if (!profilesRes.error && profilesRes.data?.length) {
     students = profilesRes.data
-      .map((row) => ({
-        id: row.id,
-        label: row.username || `student_${String(row.id).slice(0, 6)}`,
-      }))
+      .map((row) => {
+        const username = String(row.username || "").trim();
+        const displayName = String(row.display_name || "").trim();
+        const label = displayName || username || `student_${String(row.id).slice(0, 6)}`;
+        const searchText = [label, username, displayName].filter(Boolean).join(" ");
+
+        return {
+          id: row.id,
+          label,
+          searchText,
+        };
+      })
       .filter((student) => student.id !== adminId && !isAdminUsername(student.label));
   }
 
@@ -262,7 +313,10 @@ async function loadStudentList(adminUser) {
           seen.add(id);
           return true;
         })
-        .map((id) => ({ id, label: `student_${String(id).slice(0, 6)}` }));
+        .map((id) => {
+          const label = `student_${String(id).slice(0, 6)}`;
+          return { id, label, searchText: label };
+        });
     }
   }
 
@@ -340,6 +394,11 @@ function setupStatsListeners() {
   backToStudentsBtn.addEventListener("click", () => {
     showStudentPickerView();
     setStatus("Select another student.", "ok");
+  });
+
+  studentSearchEl?.addEventListener("input", () => {
+    statsState.studentSearch = studentSearchEl.value || "";
+    renderStudents();
   });
 
   const levelContainers = [javaQuizLevelsEl, javaPuzzleLevelsEl, csharpQuizLevelsEl, csharpPuzzleLevelsEl];
