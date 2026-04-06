@@ -450,7 +450,7 @@ function makeEmptyQuestion(index) {
     prompt: "",
     choices: ["", "", "", ""],
     correctChoice: "A",
-    answer: "",
+    hint: "",
     isSyntax: false,
     syntaxSnippet: "",
     syntaxAnswer: "",
@@ -509,7 +509,7 @@ function renderQuestionEditors() {
         `;
       }).join("");
 
-      const answerValue = escapeHtml(question.answer);
+      const hintValue = escapeHtml(question.hint);
       const promptValue = escapeHtml(question.prompt);
       const syntaxSnippet = escapeHtml(question.syntaxSnippet);
       const syntaxAnswer = escapeHtml(question.syntaxAnswer);
@@ -532,8 +532,8 @@ function renderQuestionEditors() {
 
             <div class="inline-grid">
               <div>
-                <label class="field-label" for="q-${index}-answer">Answer / Explanation</label>
-                <input id="q-${index}-answer" type="text" data-q-index="${index}" data-field="answer" value="${answerValue}" placeholder="Expected answer or explanation" />
+                <label class="field-label" for="q-${index}-hint">Hint</label>
+                <input id="q-${index}-hint" type="text" data-q-index="${index}" data-field="hint" value="${hintValue}" placeholder="Type a hint to help answer this question" />
               </div>
               <div>
                 <label class="field-label" for="q-${index}-correct">Correct Choice</label>
