@@ -4,6 +4,11 @@ requestAnimationFrame(() => {
   document.body.classList.add("page-entered");
 });
 
+const ENABLE_LIGHTWEIGHT_UI = true;
+if (ENABLE_LIGHTWEIGHT_UI) {
+  document.body.classList.add("lite-ui");
+}
+
 const adminLabel = document.getElementById("admin-label");
 const statusEl = document.getElementById("dashboard-status");
 
@@ -73,6 +78,7 @@ const LEVEL_GROUPS = {
 
 const statsState = {
   students: [],
+  studentsFingerprint: "",
   studentSearch: "",
   selectedStudentId: null,
   selectedStudentLabel: "-",
@@ -82,8 +88,9 @@ const statsState = {
   unlockedAchievements: [],
 };
 
-const LIVE_REFRESH_DEBOUNCE_MS = 360;
-const FALLBACK_POLL_MS = 3000;
+const LIVE_REFRESH_DEBOUNCE_MS = 1200;
+const FALLBACK_POLL_MS = 12000;
+let activeDashboardPartId = "stats-part";
 const liveState = {
   adminUser: null,
   channel: null,
@@ -93,6 +100,13 @@ const liveState = {
   pollIntervalId: null,
   visibilityHandler: null,
 };
+
+function buildStudentsFingerprint(students) {
+  return students
+    .map((student) => `${student.id}:${student.label}`)
+    .sort()
+    .join("|");
+}
 
 function normalizeSearchText(value) {
   return String(value || "")
@@ -148,6 +162,7 @@ function redirectToLoginAnimated() {
 
 function animateIn(element) {
   if (!element) return;
+  if (ENABLE_LIGHTWEIGHT_UI) return;
   element.classList.remove("screen-animate");
   void element.offsetWidth;
   element.classList.add("screen-animate");
@@ -333,8 +348,14 @@ async function loadStudentList(adminUser, options = {}) {
     }
   }
 
+  const newFingerprint = buildStudentsFingerprint(students);
+  const studentsChanged = newFingerprint !== statsState.studentsFingerprint;
   statsState.students = students;
-  renderStudents();
+  statsState.studentsFingerprint = newFingerprint;
+
+  if (studentsChanged || !silent) {
+    renderStudents();
+  }
 
   if (silent) {
     return;
@@ -354,7 +375,9 @@ async function selectStudent(studentId, options = {}) {
 
   statsState.selectedStudentId = studentId;
   statsState.selectedStudentLabel = selected.label;
-  renderStudents();
+  if (!silent) {
+    renderStudents();
+  }
 
   const [progressRes, metricsRes, userAchievementsRes] = await Promise.all([
     supabase.from("user_level_progress").select("level_key,completed").eq("user_id", studentId),
@@ -416,6 +439,7 @@ function clearLiveRefreshTimer() {
 }
 
 function queueRealtimeRefresh() {
+  if (activeDashboardPartId !== "stats-part") return;
   if (liveState.refreshTimer) return;
   liveState.refreshTimer = window.setTimeout(() => {
     liveState.refreshTimer = null;
@@ -425,6 +449,7 @@ function queueRealtimeRefresh() {
 
 async function runRealtimeRefresh() {
   if (!liveState.adminUser) return;
+  if (activeDashboardPartId !== "stats-part") return;
 
   if (liveState.refreshInFlight) {
     liveState.refreshQueued = true;
@@ -546,6 +571,8 @@ function setupStatsListeners() {
 }
 
 function setActivePart(partId) {
+  activeDashboardPartId = partId;
+
   let activePart = null;
   dashboardParts.forEach((part) => {
     const isActive = part.id === partId;
@@ -558,6 +585,10 @@ function setActivePart(partId) {
   menuLinks.forEach((link) => {
     link.classList.toggle("active", link.dataset.targetPart === partId);
   });
+
+  if (partId === "stats-part") {
+    queueRealtimeRefresh();
+  }
 
   animateIn(activePart);
 }

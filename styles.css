@@ -866,6 +866,13 @@ button:hover {
   transition: transform 0.17s ease, border-color 0.17s ease;
 }
 
+/* Keep editor interactions smooth by avoiding expensive blur effects there. */
+#editor-part .panel,
+#editor-part .question-card {
+  backdrop-filter: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
 .question-card:hover {
   transform: translateY(-2px);
   border-color: rgba(255, 255, 255, 0.33);
@@ -1054,4 +1061,46 @@ tbody td {
   .editor-toolbar {
     padding: 14px;
   }
+}
+
+/* Lightweight mode: prioritize responsiveness over heavy effects. */
+body.lite-ui {
+  background: linear-gradient(155deg, var(--bg-1), var(--bg-2) 48%, var(--bg-3));
+}
+
+body.lite-ui::before,
+body.lite-ui::after {
+  display: none;
+}
+
+body.lite-ui .page-loader,
+body.lite-ui .auth-card,
+body.lite-ui .panel,
+body.lite-ui .stat-card,
+body.lite-ui .dashboard-header {
+  backdrop-filter: none !important;
+}
+
+body.lite-ui .auth-card,
+body.lite-ui .panel,
+body.lite-ui .stat-card,
+body.lite-ui .question-card {
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+}
+
+body.lite-ui button:hover,
+body.lite-ui .question-card:hover {
+  transform: none;
+}
+
+body.lite-ui .screen-animate {
+  animation: none;
+}
+
+body.lite-ui button,
+body.lite-ui input,
+body.lite-ui select,
+body.lite-ui textarea,
+body.lite-ui .question-card {
+  transition: border-color 0.1s ease, box-shadow 0.1s ease;
 }
