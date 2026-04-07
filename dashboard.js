@@ -82,6 +82,18 @@ const statsState = {
   unlockedAchievements: [],
 };
 
+const LIVE_REFRESH_DEBOUNCE_MS = 360;
+const FALLBACK_POLL_MS = 3000;
+const liveState = {
+  adminUser: null,
+  channel: null,
+  refreshTimer: null,
+  refreshInFlight: false,
+  refreshQueued: false,
+  pollIntervalId: null,
+  visibilityHandler: null,
+};
+
 function normalizeSearchText(value) {
   return String(value || "")
     .toLowerCase()
@@ -276,7 +288,8 @@ function renderStudentSummary() {
   renderLevelDetail();
 }
 
-async function loadStudentList(adminUser) {
+async function loadStudentList(adminUser, options = {}) {
+  const { silent = false } = options;
   let students = [];
   const adminId = adminUser?.id || "";
 
@@ -323,6 +336,10 @@ async function loadStudentList(adminUser) {
   statsState.students = students;
   renderStudents();
 
+  if (silent) {
+    return;
+  }
+
   if (students.length > 0) {
     setStatus("Select a student to view detailed stats.", "ok");
   } else {
@@ -330,7 +347,8 @@ async function loadStudentList(adminUser) {
   }
 }
 
-async function selectStudent(studentId) {
+async function selectStudent(studentId, options = {}) {
+  const { silent = false, openDetail = true } = options;
   const selected = statsState.students.find((student) => student.id === studentId);
   if (!selected) return;
 
@@ -348,7 +366,9 @@ async function selectStudent(studentId) {
   ]);
 
   if (progressRes.error || metricsRes.error || userAchievementsRes.error) {
-    setStatus("Could not load selected student stats. Check table policies for admin access.", "error");
+    if (!silent) {
+      setStatus("Could not load selected student stats. Check table policies for admin access.", "error");
+    }
     statsState.progressByLevel = {};
     statsState.metricsByLevel = {};
     statsState.unlockedAchievements = [];
@@ -380,8 +400,120 @@ async function selectStudent(studentId) {
   }
 
   renderStudentSummary();
-  showStudentDetailView();
-  setStatus(`Loaded stats for ${selected.label}.`, "ok");
+  if (openDetail) {
+    showStudentDetailView();
+  }
+  if (!silent) {
+    setStatus(`Loaded stats for ${selected.label}.`, "ok");
+  }
+}
+
+function clearLiveRefreshTimer() {
+  if (liveState.refreshTimer) {
+    window.clearTimeout(liveState.refreshTimer);
+    liveState.refreshTimer = null;
+  }
+}
+
+function queueRealtimeRefresh() {
+  if (liveState.refreshTimer) return;
+  liveState.refreshTimer = window.setTimeout(() => {
+    liveState.refreshTimer = null;
+    void runRealtimeRefresh();
+  }, LIVE_REFRESH_DEBOUNCE_MS);
+}
+
+async function runRealtimeRefresh() {
+  if (!liveState.adminUser) return;
+
+  if (liveState.refreshInFlight) {
+    liveState.refreshQueued = true;
+    return;
+  }
+
+  liveState.refreshInFlight = true;
+  try {
+    const selectedId = statsState.selectedStudentId;
+    const detailVisible = !studentDetailViewEl.classList.contains("hidden");
+
+    await loadStudentList(liveState.adminUser, { silent: true });
+
+    if (!selectedId) {
+      return;
+    }
+
+    const stillExists = statsState.students.some((student) => student.id === selectedId);
+    if (!stillExists) {
+      statsState.selectedStudentId = null;
+      statsState.selectedStudentLabel = "-";
+      statsState.progressByLevel = {};
+      statsState.metricsByLevel = {};
+      statsState.unlockedAchievements = [];
+      renderStudentSummary();
+      showStudentPickerView();
+      return;
+    }
+
+    await selectStudent(selectedId, { silent: true, openDetail: detailVisible });
+  } finally {
+    liveState.refreshInFlight = false;
+    if (liveState.refreshQueued) {
+      liveState.refreshQueued = false;
+      queueRealtimeRefresh();
+    }
+  }
+}
+
+function teardownRealtimeStats() {
+  clearLiveRefreshTimer();
+  liveState.refreshQueued = false;
+  liveState.adminUser = null;
+
+  if (liveState.pollIntervalId) {
+    window.clearInterval(liveState.pollIntervalId);
+    liveState.pollIntervalId = null;
+  }
+
+  if (liveState.visibilityHandler) {
+    document.removeEventListener("visibilitychange", liveState.visibilityHandler);
+    liveState.visibilityHandler = null;
+  }
+
+  if (liveState.channel) {
+    supabase.removeChannel(liveState.channel);
+    liveState.channel = null;
+  }
+}
+
+function setupRealtimeStats(adminUser) {
+  teardownRealtimeStats();
+  liveState.adminUser = adminUser;
+
+  const queue = () => queueRealtimeRefresh();
+  liveState.channel = supabase
+    .channel(`admin-dashboard-live-${adminUser.id}`)
+    .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, queue)
+    .on("postgres_changes", { event: "*", schema: "public", table: "user_level_progress" }, queue)
+    .on("postgres_changes", { event: "*", schema: "public", table: "user_level_metrics" }, queue)
+    .on("postgres_changes", { event: "*", schema: "public", table: "user_achievements" }, queue)
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        queueRealtimeRefresh();
+      }
+    });
+
+  // Fallback for environments where Realtime is not enabled or delayed.
+  liveState.pollIntervalId = window.setInterval(() => {
+    if (document.hidden) return;
+    queueRealtimeRefresh();
+  }, FALLBACK_POLL_MS);
+
+  liveState.visibilityHandler = () => {
+    if (!document.hidden) {
+      queueRealtimeRefresh();
+    }
+  };
+  document.addEventListener("visibilitychange", liveState.visibilityHandler);
 }
 
 function setupStatsListeners() {
@@ -690,12 +822,16 @@ async function boot() {
 
   setupStatsListeners();
   await loadStudentList(user);
+  setupRealtimeStats(user);
 
   setupEditorListeners();
   updateEditorUi();
 }
 
+window.addEventListener("beforeunload", teardownRealtimeStats);
+
 document.getElementById("signout-btn").addEventListener("click", async () => {
+  teardownRealtimeStats();
   await supabase.auth.signOut();
   redirectToLoginAnimated();
 });
