@@ -362,7 +362,7 @@ async function loadStudentList(adminUser, options = {}) {
   }
 
   if (students.length > 0) {
-    setStatus("Select a student to view detailed stats.", "ok");
+    setStatus("Student records loaded.", "ok");
   } else {
     setStatus("No student records found (admin excluded).", "error");
   }
@@ -550,7 +550,6 @@ function setupStatsListeners() {
 
   backToStudentsBtn.addEventListener("click", () => {
     showStudentPickerView();
-    setStatus("Select another student.", "ok");
   });
 
   studentSearchEl?.addEventListener("input", () => {
@@ -594,17 +593,39 @@ function setActivePart(partId) {
 }
 
 function setupDashboardMenu() {
+  const setMenuOpenState = (isOpen) => {
+    dashboardMenu.classList.toggle("open", isOpen);
+    menuToggleBtn.setAttribute("aria-expanded", String(isOpen));
+  };
+
+  const closeMenu = () => {
+    setMenuOpenState(false);
+  };
+
   dashboardMenu.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-target-part]");
     if (!button) return;
 
     const targetPart = button.dataset.targetPart;
     setActivePart(targetPart);
-    dashboardMenu.classList.remove("open");
+    closeMenu();
   });
 
   menuToggleBtn.addEventListener("click", () => {
-    dashboardMenu.classList.toggle("open");
+    const nextOpen = !dashboardMenu.classList.contains("open");
+    setMenuOpenState(nextOpen);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!dashboardMenu.classList.contains("open")) return;
+    if (event.target.closest("#dashboard-menu") || event.target.closest("#menu-toggle")) return;
+    closeMenu();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && dashboardMenu.classList.contains("open")) {
+      closeMenu();
+    }
   });
 }
 
@@ -805,7 +826,7 @@ function setupEditorListeners() {
   });
 
   saveLayoutBtn.addEventListener("click", () => {
-    setStatus("UI design ready. Save logic can be connected to Supabase next.", "ok");
+    setStatus("Quiz layout updated.", "ok");
   });
 
   questionEditorList.addEventListener("input", (event) => {

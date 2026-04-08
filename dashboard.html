@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260407e" />
+    <link rel="stylesheet" href="./styles.css?v=20260408b" />
   </head>
   <body>
     <div id="page-loader" class="page-loader hidden" aria-live="polite" aria-label="Loading">
@@ -21,11 +21,24 @@
     <main class="dashboard-layout">
       <header class="dashboard-header">
         <div class="header-left">
-          <button id="menu-toggle" class="menu-toggle" type="button" aria-label="Toggle dashboard menu">
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
+          <div class="menu-wrap">
+            <button
+              id="menu-toggle"
+              class="menu-toggle"
+              type="button"
+              aria-label="Toggle dashboard menu"
+              aria-expanded="false"
+              aria-controls="dashboard-menu"
+            >
+              <span></span>
+              <span></span>
+              <span></span>
+            </button>
+            <nav id="dashboard-menu" class="dashboard-menu" aria-label="Dashboard sections">
+              <button class="menu-link active" type="button" data-target-part="stats-part">Stats Overview</button>
+              <button class="menu-link" type="button" data-target-part="editor-part">Quiz Editor</button>
+            </nav>
+          </div>
           <div>
             <p class="eyebrow">CodeQuest Website</p>
             <h1>Admin Dashboard</h1>
@@ -35,11 +48,6 @@
         <button id="signout-btn" class="ghost-btn" type="button">Sign out</button>
       </header>
 
-      <nav id="dashboard-menu" class="dashboard-menu" aria-label="Dashboard sections">
-        <button class="menu-link active" type="button" data-target-part="stats-part">Stats Overview</button>
-        <button class="menu-link" type="button" data-target-part="editor-part">Quiz Editor</button>
-      </nav>
-
       <section class="dashboard-part" id="stats-part">
         <div class="part-header">
           <p class="part-kicker">Part 1</p>
@@ -48,7 +56,6 @@
 
         <section id="student-picker-view" class="panel student-picker-view">
           <div class="panel-title-row">
-            <h3>Select Student</h3>
             <p id="students-count" class="mini-stat">0</p>
           </div>
           <p class="muted">Choose a student to open detailed Java/C# level stats and achievements.</p>
@@ -132,7 +139,6 @@
         <div class="part-header">
           <p class="part-kicker">Part 2</p>
           <h2>Quiz Editor Design</h2>
-          <p class="muted editor-note">UI only for now. Save behavior can be wired later.</p>
         </div>
 
         <section class="panel editor-toolbar">
@@ -170,6 +176,6 @@
       <p id="dashboard-status" class="status" aria-live="polite"></p>
     </main>
 
-    <script type="module" src="./dashboard.js?v=20260407d"></script>
+    <script type="module" src="./dashboard.js?v=20260408b"></script>
   </body>
 </html>

@@ -10,6 +10,10 @@
   --accent: #f5f5f5;
   --accent-2: #d6d6d6;
   --danger: #e2e2e2;
+  --done-bg-1: #7e9983;
+  --done-bg-2: #61766a;
+  --done-text: #0f1b13;
+  --done-border: rgba(186, 214, 193, 0.42);
 }
 
 * {
@@ -355,6 +359,13 @@ button:hover {
   gap: 12px;
 }
 
+.menu-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .menu-toggle {
   margin-top: 2px;
   width: 42px;
@@ -377,7 +388,7 @@ button:hover {
 }
 
 .dashboard-menu {
-  margin-top: 8px;
+  margin-top: 0;
   border: 1px solid var(--panel-border);
   background: rgba(14, 14, 14, 0.78);
   border-radius: 14px;
@@ -386,7 +397,7 @@ button:hover {
   gap: 8px;
   flex-direction: column;
   position: absolute;
-  top: 88px;
+  top: calc(100% + 8px);
   left: 0;
   z-index: 25;
   width: min(270px, 90vw);
@@ -660,8 +671,9 @@ button:hover {
 }
 
 .level-chip.done .status-pill {
-  color: #0f0f0f;
-  background: #d6d6d6;
+  color: var(--done-text);
+  background: linear-gradient(120deg, var(--done-bg-1), var(--done-bg-2));
+  border: 1px solid var(--done-border);
 }
 
 .level-chip.not-done .status-pill {
@@ -1048,10 +1060,6 @@ tbody td {
 
   .header-left {
     width: 100%;
-  }
-
-  .dashboard-menu {
-    top: 132px;
   }
 
   .stats-grid {
