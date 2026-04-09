@@ -22,6 +22,12 @@ const studentSearchEl = document.getElementById("student-search");
 const selectedStudentNameEl = document.getElementById("selected-student-name");
 const completedCountEl = document.getElementById("completed-count");
 const achievementsCountEl = document.getElementById("achievements-count");
+const achievementsSummaryBtn = document.getElementById("achievements-summary-btn");
+const achievementsDetailPanelEl = document.getElementById("achievements-detail-panel");
+const closeAchievementsDetailBtn = document.getElementById("close-achievements-detail-btn");
+const achievementsDetailTitleEl = document.getElementById("achievements-detail-title");
+const achievementsDetailListEl = document.getElementById("achievements-detail-list");
+const achievementsDetailCardEl = achievementsDetailPanelEl?.querySelector(".achievements-modal-card") || null;
 
 const javaQuizLevelsEl = document.getElementById("java-quiz-levels");
 const javaPuzzleLevelsEl = document.getElementById("java-puzzle-levels");
@@ -54,6 +60,44 @@ const LANGUAGES = [
 ];
 const LEVELS = [1, 2, 3];
 const CHOICE_LETTERS = ["A", "B", "C", "D"];
+const FALLBACK_ACHIEVEMENT_CATALOG = [
+  {
+    id: 1,
+    code: "first_steps",
+    title: "First Steps",
+    description: "Complete your first quiz level",
+  },
+  {
+    id: 2,
+    code: "csharp_beginner",
+    title: "CSharp Master",
+    description: "Complete CSharp Quiz Level 3",
+  },
+  {
+    id: 3,
+    code: "java_beginner",
+    title: "Java Master",
+    description: "Complete Java Quiz Level 3",
+  },
+  {
+    id: 4,
+    code: "perfect_answer",
+    title: "Perfect Solve",
+    description: "Complete 2 puzzles without using hints",
+  },
+  {
+    id: 5,
+    code: "efficient_learner",
+    title: "Efficient Learner",
+    description: "Complete 3 levels with 3 or fewer wrong attempts",
+  },
+  {
+    id: 6,
+    code: "quiz_master",
+    title: "Quiz Master",
+    description: "Complete all quiz levels",
+  },
+];
 
 const editorState = {
   language: "java",
@@ -86,6 +130,8 @@ const statsState = {
   progressByLevel: {},
   metricsByLevel: {},
   unlockedAchievements: [],
+  achievementCatalog: [],
+  achievementCatalogLoaded: false,
 };
 
 const LIVE_REFRESH_DEBOUNCE_MS = 1200;
@@ -240,6 +286,7 @@ function renderStudents() {
 function showStudentPickerView() {
   studentPickerViewEl.classList.remove("hidden");
   studentDetailViewEl.classList.add("hidden");
+  closeAchievementDetailPanel();
   animateIn(studentPickerViewEl);
 }
 
@@ -298,9 +345,115 @@ function renderStudentSummary() {
   const completedCount = flattenMainLevelKeys().filter((key) => Boolean(statsState.progressByLevel[key])).length;
   completedCountEl.textContent = String(completedCount);
   achievementsCountEl.textContent = String(statsState.unlockedAchievements.length);
+  achievementsSummaryBtn?.setAttribute("aria-expanded", String(!achievementsDetailPanelEl?.classList.contains("hidden")));
+
+  if (achievementsDetailPanelEl && !achievementsDetailPanelEl.classList.contains("hidden")) {
+    renderAchievementDetailPanel();
+  }
 
   renderAllLevelGroups();
   renderLevelDetail();
+}
+
+function normalizeAchievementCatalog(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return FALLBACK_ACHIEVEMENT_CATALOG;
+  }
+
+  return rows.map((row, index) => ({
+    id: Number(row?.id || index + 1),
+    code: String(row?.code || "").trim(),
+    title: String(row?.title || row?.code || `Achievement ${index + 1}`).trim(),
+    description: String(row?.description || "").trim(),
+  }));
+}
+
+async function ensureAchievementCatalog() {
+  if (statsState.achievementCatalogLoaded && statsState.achievementCatalog.length > 0) {
+    return;
+  }
+
+  const catalogRes = await supabase.from("achievements").select("id,code,title,description").order("id", { ascending: true });
+  if (catalogRes.error) {
+    statsState.achievementCatalog = FALLBACK_ACHIEVEMENT_CATALOG;
+    statsState.achievementCatalogLoaded = false;
+    return;
+  }
+
+  statsState.achievementCatalog = normalizeAchievementCatalog(catalogRes.data || []);
+  statsState.achievementCatalogLoaded = true;
+}
+
+function getUnlockedAchievementIdSet() {
+  const ids = statsState.unlockedAchievements
+    .map((row) => Number(row?.achievement_id))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return new Set(ids);
+}
+
+function getUnlockedAchievementCodeSet() {
+  const codes = statsState.unlockedAchievements
+    .map((row) => String(row?.achievements?.code || "").trim())
+    .filter(Boolean);
+  return new Set(codes);
+}
+
+function renderAchievementDetailPanel() {
+  if (!achievementsDetailTitleEl || !achievementsDetailListEl) {
+    return;
+  }
+
+  const studentName = statsState.selectedStudentLabel || "Student";
+  achievementsDetailTitleEl.textContent = `${studentName} Achievements`;
+
+  const catalog = statsState.achievementCatalog.length > 0 ? statsState.achievementCatalog : FALLBACK_ACHIEVEMENT_CATALOG;
+  const unlockedIds = getUnlockedAchievementIdSet();
+  const unlockedCodes = getUnlockedAchievementCodeSet();
+
+  achievementsDetailListEl.innerHTML = catalog
+    .map((achievement) => {
+      const unlocked = unlockedIds.has(Number(achievement.id)) || unlockedCodes.has(String(achievement.code));
+      const rowClass = unlocked ? "unlocked" : "locked";
+      const stateLabel = unlocked ? "Completed" : "Locked";
+      const title = escapeHtml(achievement.title || achievement.code || "Achievement");
+      const description = escapeHtml(achievement.description || "No description available.");
+
+      return `
+        <article class="achievement-row ${rowClass}">
+          <div>
+            <strong>${title}</strong>
+            <p>${description}</p>
+          </div>
+          <span class="achievement-state">${stateLabel}</span>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function closeAchievementDetailPanel() {
+  if (!achievementsDetailPanelEl) {
+    return;
+  }
+  achievementsDetailPanelEl.classList.add("hidden");
+  document.body.classList.remove("modal-open");
+  achievementsSummaryBtn?.setAttribute("aria-expanded", "false");
+}
+
+function openAchievementDetailPanel() {
+  if (!achievementsDetailPanelEl) {
+    return;
+  }
+  if (!statsState.selectedStudentId) {
+    setStatus("Select a student first.", "error");
+    return;
+  }
+
+  document.body.classList.add("modal-open");
+  renderAchievementDetailPanel();
+  achievementsDetailPanelEl.classList.remove("hidden");
+  achievementsSummaryBtn?.setAttribute("aria-expanded", "true");
+  closeAchievementsDetailBtn?.focus();
 }
 
 async function loadStudentList(adminUser, options = {}) {
@@ -373,6 +526,8 @@ async function selectStudent(studentId, options = {}) {
   const selected = statsState.students.find((student) => student.id === studentId);
   if (!selected) return;
 
+  await ensureAchievementCatalog();
+
   statsState.selectedStudentId = studentId;
   statsState.selectedStudentLabel = selected.label;
   if (!silent) {
@@ -385,7 +540,7 @@ async function selectStudent(studentId, options = {}) {
       .from("user_level_metrics")
       .select("level_key,failed_attempts_total,hints_used_total")
       .eq("user_id", studentId),
-    supabase.from("user_achievements").select("achievement_id").eq("user_id", studentId),
+    supabase.from("user_achievements").select("achievement_id,achievements(code)").eq("user_id", studentId),
   ]);
 
   if (progressRes.error || metricsRes.error || userAchievementsRes.error) {
@@ -557,6 +712,31 @@ function setupStatsListeners() {
     renderStudents();
   });
 
+  achievementsSummaryBtn?.addEventListener("click", () => {
+    const isOpen = achievementsDetailPanelEl && !achievementsDetailPanelEl.classList.contains("hidden");
+    if (isOpen) {
+      closeAchievementDetailPanel();
+      return;
+    }
+    openAchievementDetailPanel();
+  });
+
+  closeAchievementsDetailBtn?.addEventListener("click", () => {
+    closeAchievementDetailPanel();
+  });
+
+  achievementsDetailPanelEl?.addEventListener("click", (event) => {
+    if (event.target === achievementsDetailPanelEl) {
+      closeAchievementDetailPanel();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && achievementsDetailPanelEl && !achievementsDetailPanelEl.classList.contains("hidden")) {
+      closeAchievementDetailPanel();
+    }
+  });
+
   const levelContainers = [javaQuizLevelsEl, javaPuzzleLevelsEl, csharpQuizLevelsEl, csharpPuzzleLevelsEl];
   for (const container of levelContainers) {
     container.addEventListener("click", (event) => {
@@ -571,6 +751,10 @@ function setupStatsListeners() {
 
 function setActivePart(partId) {
   activeDashboardPartId = partId;
+
+  if (partId !== "stats-part") {
+    closeAchievementDetailPanel();
+  }
 
   let activePart = null;
   dashboardParts.forEach((part) => {
@@ -867,6 +1051,8 @@ async function requireAdminSession() {
 async function boot() {
   const user = await requireAdminSession();
   if (!user) return;
+
+  await ensureAchievementCatalog();
 
   setupDashboardMenu();
   setActivePart("stats-part");

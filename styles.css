@@ -82,12 +82,12 @@ main {
 
 body.page-entered {
   opacity: 1;
-  transform: translateY(0);
+  transform: none;
 }
 
 body.page-leaving {
   opacity: 1;
-  transform: translateY(0);
+  transform: none;
 }
 
 body.page-leaving main {
@@ -766,6 +766,153 @@ button:hover {
   border-radius: 16px;
 }
 
+.achievement-summary-btn {
+  margin-top: 0;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  background: linear-gradient(165deg, var(--surface-tint), transparent 48%), var(--panel);
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease,
+    transform 0.15s ease;
+}
+
+.achievement-summary-btn:hover,
+.achievement-summary-btn:focus-visible {
+  transform: translateY(-1px);
+  filter: none;
+  border-color: rgba(196, 227, 205, 0.62);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.2), rgba(172, 208, 183, 0.08) 52%), rgba(18, 18, 18, 0.94);
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(196, 227, 205, 0.38);
+}
+
+.achievement-summary-btn:hover h3,
+.achievement-summary-btn:hover p,
+.achievement-summary-btn:focus-visible h3,
+.achievement-summary-btn:focus-visible p {
+  color: #f4f4f4;
+}
+
+.achievement-summary-view {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #d8d8d8;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(26, 26, 26, 0.72);
+}
+
+.achievement-summary-view::after {
+  content: ">";
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.achievement-summary-btn:hover .achievement-summary-view,
+.achievement-summary-btn:focus-visible .achievement-summary-view {
+  color: #f6f6f6;
+  border-color: rgba(196, 227, 205, 0.62);
+  background: rgba(34, 45, 38, 0.84);
+}
+
+.achievements-modal {
+  position: fixed !important;
+  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(6, 6, 6, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.achievements-detail {
+  margin-top: 0;
+  padding: 14px;
+}
+
+.achievements-modal-card {
+  width: min(760px, 96vw);
+  max-height: min(82vh, 780px);
+  overflow: auto;
+  box-shadow: 0 26px 54px rgba(0, 0, 0, 0.42);
+}
+
+.achievements-detail-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.achievement-row {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(22, 22, 22, 0.7);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.achievement-row strong {
+  display: block;
+  color: #eeeeee;
+  font-size: 0.92rem;
+}
+
+.achievement-row p {
+  margin: 4px 0 0;
+  color: #a9a9a9;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.achievement-state {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-family: "IBM Plex Mono", monospace;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.achievement-row.unlocked .achievement-state {
+  color: var(--done-text);
+  background: linear-gradient(120deg, var(--done-bg-1), var(--done-bg-2));
+  border-color: var(--done-border);
+}
+
+.achievement-row.locked .achievement-state {
+  color: #1a1a1a;
+  background: #8f8f8f;
+}
+
+body.modal-open {
+  overflow: hidden;
+  transition: none !important;
+  transform: none !important;
+}
+
 .stat-card p {
   margin: 8px 0 0;
   font-size: 2.05rem;
@@ -1068,6 +1215,10 @@ tbody td {
 
   .editor-toolbar {
     padding: 14px;
+  }
+
+  .achievement-row {
+    grid-template-columns: 1fr;
   }
 }
 

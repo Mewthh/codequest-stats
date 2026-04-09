@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260408b" />
+    <link rel="stylesheet" href="./styles.css?v=20260409g" />
   </head>
   <body>
     <div id="page-loader" class="page-loader hidden" aria-live="polite" aria-label="Loading">
@@ -87,11 +87,19 @@
                 <h3>Completed Levels</h3>
                 <p id="completed-count">0</p>
               </article>
-              <article class="stat-card">
+              <button
+                id="achievements-summary-btn"
+                class="stat-card achievement-summary-btn"
+                type="button"
+                aria-controls="achievements-detail-panel"
+                aria-expanded="false"
+              >
                 <h3>Completed Achievements</h3>
                 <p id="achievements-count">0</p>
-              </article>
+                <span class="achievement-summary-view">View</span>
+              </button>
             </section>
+
           </div>
 
           <section class="levels-detail-layout">
@@ -176,6 +184,23 @@
       <p id="dashboard-status" class="status" aria-live="polite"></p>
     </main>
 
-    <script type="module" src="./dashboard.js?v=20260408b"></script>
+    <div
+      id="achievements-detail-panel"
+      class="achievements-modal hidden"
+      aria-live="polite"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="achievements-detail-title"
+    >
+      <section class="panel achievements-detail achievements-modal-card">
+        <div class="panel-title-row">
+          <h3 id="achievements-detail-title">Achievements</h3>
+          <button id="close-achievements-detail-btn" type="button" class="ghost-btn compact-btn">Close</button>
+        </div>
+        <div id="achievements-detail-list" class="achievements-detail-list"></div>
+      </section>
+    </div>
+
+    <script type="module" src="./dashboard.js?v=20260409f"></script>
   </body>
 </html>
