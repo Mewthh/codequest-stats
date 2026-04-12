@@ -134,8 +134,8 @@ const statsState = {
   achievementCatalogLoaded: false,
 };
 
-const LIVE_REFRESH_DEBOUNCE_MS = 1200;
-const FALLBACK_POLL_MS = 12000;
+const LIVE_REFRESH_DEBOUNCE_MS = 500;
+const FALLBACK_POLL_MS = 6000;
 let activeDashboardPartId = "stats-part";
 const liveState = {
   adminUser: null,
@@ -593,8 +593,13 @@ function clearLiveRefreshTimer() {
   }
 }
 
-function queueRealtimeRefresh() {
+function queueRealtimeRefresh(immediate = false) {
   if (activeDashboardPartId !== "stats-part") return;
+  if (immediate) {
+    clearLiveRefreshTimer();
+    void runRealtimeRefresh();
+    return;
+  }
   if (liveState.refreshTimer) return;
   liveState.refreshTimer = window.setTimeout(() => {
     liveState.refreshTimer = null;
@@ -670,11 +675,12 @@ function setupRealtimeStats(adminUser) {
   liveState.adminUser = adminUser;
 
   const queue = () => queueRealtimeRefresh();
+  const queueMetrics = () => queueRealtimeRefresh(true);
   liveState.channel = supabase
     .channel(`admin-dashboard-live-${adminUser.id}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, queue)
     .on("postgres_changes", { event: "*", schema: "public", table: "user_level_progress" }, queue)
-    .on("postgres_changes", { event: "*", schema: "public", table: "user_level_metrics" }, queue)
+    .on("postgres_changes", { event: "*", schema: "public", table: "user_level_metrics" }, queueMetrics)
     .on("postgres_changes", { event: "*", schema: "public", table: "user_achievements" }, queue)
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
