@@ -60,6 +60,10 @@ const LANGUAGES = [
 ];
 const LEVELS = [1, 2, 3];
 const CHOICE_LETTERS = ["A", "B", "C", "D"];
+const QUIZ_LEVEL_KEY_BY_LANGUAGE = {
+  java: { 1: "java_quiz_1", 2: "java_quiz_2", 3: "java_quiz_3" },
+  csharp: { 1: "csharp_quiz_1", 2: "csharp_quiz_2", 3: "csharp_quiz_3" },
+};
 const FALLBACK_ACHIEVEMENT_CATALOG = [
   {
     id: 1,
@@ -105,6 +109,8 @@ const editorState = {
 };
 
 const quizEditorStore = {};
+let isEditorLoading = false;
+let editorLoadSeq = 0;
 
 const dashboardParts = Array.from(document.querySelectorAll(".dashboard-part"));
 const menuLinks = Array.from(document.querySelectorAll(".menu-link"));
@@ -827,13 +833,236 @@ function makeEmptyQuestion(index) {
     hint: "",
     isSyntax: false,
     syntaxSnippet: "",
-    syntaxAnswer: "",
     title: `Quiz ${index + 1}`,
   };
 }
 
 function getEditorKey() {
   return `${editorState.language}:level${editorState.level}`;
+}
+
+function getEditorLevelKey() {
+  return QUIZ_LEVEL_KEY_BY_LANGUAGE[editorState.language]?.[editorState.level] || "";
+}
+
+function normalizeCorrectChoice(value) {
+  const letter = String(value || "A").toUpperCase();
+  return CHOICE_LETTERS.includes(letter) ? letter : "A";
+}
+
+function mapCloudRowToQuestion(row, index) {
+  const isSyntax = Boolean(row?.is_syntax);
+  return {
+    prompt: String(row?.question_text || ""),
+    choices: [String(row?.choice_a || ""), String(row?.choice_b || ""), String(row?.choice_c || ""), String(row?.choice_d || "")],
+    correctChoice: normalizeCorrectChoice(row?.correct_choice),
+    hint: String(row?.hint_text || ""),
+    isSyntax,
+    syntaxSnippet: isSyntax ? String(row?.syntax_snippet || "") : "",
+    title: `Quiz ${index + 1}`,
+  };
+}
+
+function isQuestionBlankForOverride(question) {
+  const prompt = String(question.prompt || "").trim();
+  const hint = String(question.hint || "").trim();
+  const syntaxSnippet = String(question.syntaxSnippet || "").trim();
+  const choices = CHOICE_LETTERS.map((_, idx) => String(question.choices?.[idx] || "").trim());
+  return !prompt && !hint && !syntaxSnippet && choices.every((choice) => !choice);
+}
+
+function validateQuestionForSave(question, index) {
+  if (isQuestionBlankForOverride(question)) return "";
+
+  const choices = CHOICE_LETTERS.map((_, choiceIdx) => String(question.choices?.[choiceIdx] || "").trim());
+  if (choices.some((choice) => !choice)) {
+    return `Quiz #${index + 1}: All four choices are required.`;
+  }
+
+  if (Boolean(question.isSyntax)) {
+    const snippet = String(question.syntaxSnippet || "").trim();
+    if (!snippet) {
+      return `Quiz #${index + 1}: Code Snippet is required for output questions.`;
+    }
+  }
+
+  return "";
+}
+
+async function loadEditorBundleFromCloud(options = {}) {
+  const { silent = false } = options;
+  const loadId = ++editorLoadSeq;
+  setEditorLoadingState(true, silent ? "Loading quiz editor..." : "Loading quiz editor data from cloud...");
+
+  try {
+    const key = getEditorKey();
+    const levelKey = getEditorLevelKey();
+    if (!levelKey) {
+      if (!silent) {
+        setStatus("Invalid editor level selected.", "error");
+      }
+      return false;
+    }
+
+    const [settingsRes, effectiveRes] = await Promise.all([
+      supabase.from("quiz_level_settings").select("active_question_count").eq("level_key", levelKey).limit(1),
+      supabase
+        .from("quiz_effective_questions")
+        .select("slot_no,question_text,choice_a,choice_b,choice_c,choice_d,correct_choice,hint_text,is_syntax,syntax_snippet,syntax_answer")
+        .eq("level_key", levelKey)
+        .order("slot_no", { ascending: true }),
+    ]);
+
+    if (loadId !== editorLoadSeq) {
+      return false;
+    }
+
+    if (settingsRes.error || effectiveRes.error) {
+      if (!silent) {
+        setStatus("Could not load quiz editor data from cloud. Check table policies or schema.", "error");
+      }
+      ensureEditorBundle();
+      return false;
+    }
+
+    const activeCountRaw = Number(settingsRes.data?.[0]?.active_question_count || effectiveRes.data?.length || QUIZ_MAX);
+    const activeCount = Math.min(QUIZ_MAX, Math.max(QUIZ_MIN, Number.isFinite(activeCountRaw) ? activeCountRaw : QUIZ_MAX));
+
+    const questions = Array.from({ length: QUIZ_MAX }, (_, idx) => makeEmptyQuestion(idx));
+    for (const row of effectiveRes.data || []) {
+      const slotNo = Number(row?.slot_no);
+      if (!Number.isInteger(slotNo) || slotNo < 1 || slotNo > QUIZ_MAX) continue;
+      questions[slotNo - 1] = mapCloudRowToQuestion(row, slotNo - 1);
+    }
+
+    quizEditorStore[key] = {
+      count: activeCount,
+      questions,
+    };
+
+    if (!silent) {
+      setStatus(`Loaded quiz editor data for ${levelKey}.`, "ok");
+    }
+    return true;
+  } catch (error) {
+    if (loadId !== editorLoadSeq) {
+      return false;
+    }
+    if (!silent) {
+      setStatus("Could not load quiz editor data from cloud. Check network and schema.", "error");
+    }
+    ensureEditorBundle();
+    return false;
+  } finally {
+    if (loadId === editorLoadSeq) {
+      setEditorLoadingState(false);
+    }
+  }
+}
+
+async function saveEditorBundleToCloud() {
+  const bundle = ensureEditorBundle();
+  const levelKey = getEditorLevelKey();
+  if (!levelKey) {
+    setStatus("Invalid editor level selected.", "error");
+    return false;
+  }
+
+  const activeCount = Math.min(QUIZ_MAX, Math.max(QUIZ_MIN, Number(bundle.count || QUIZ_MAX)));
+  const activeQuestions = bundle.questions.slice(0, activeCount);
+  const overrideRows = [];
+  const deleteSlots = [];
+
+  const defaultsRes = await supabase
+    .from("quiz_default_questions")
+    .select("slot_no,question_text")
+    .eq("level_key", levelKey);
+  if (defaultsRes.error) {
+    setStatus("Could not load default quiz questions for fallback text.", "error");
+    return false;
+  }
+  const defaultQuestionTextBySlot = new Map(
+    (defaultsRes.data || []).map((row) => [Number(row?.slot_no), String(row?.question_text || "").trim()])
+  );
+
+  for (let i = 0; i < activeQuestions.length; i += 1) {
+    const question = activeQuestions[i] || makeEmptyQuestion(i);
+    const slotNo = i + 1;
+    const validationError = validateQuestionForSave(question, i);
+    if (validationError) {
+      setStatus(validationError, "error");
+      return false;
+    }
+
+    if (isQuestionBlankForOverride(question)) {
+      deleteSlots.push(slotNo);
+      continue;
+    }
+
+    const choices = CHOICE_LETTERS.map((_, choiceIdx) => String(question.choices?.[choiceIdx] || "").trim());
+    const isSyntax = Boolean(question.isSyntax);
+    const syntaxSnippet = isSyntax ? String(question.syntaxSnippet || "").trim() : "";
+    const promptText = String(question.prompt || "").trim() || defaultQuestionTextBySlot.get(slotNo) || "";
+    if (!promptText) {
+      setStatus(`Quiz #${slotNo}: Question text is missing and no default question was found for this slot.`, "error");
+      return false;
+    }
+
+    overrideRows.push({
+      level_key: levelKey,
+      slot_no: slotNo,
+      question_text: promptText,
+      choice_a: choices[0],
+      choice_b: choices[1],
+      choice_c: choices[2],
+      choice_d: choices[3],
+      correct_choice: normalizeCorrectChoice(question.correctChoice),
+      hint_text: String(question.hint || "").trim() || null,
+      is_syntax: isSyntax,
+      syntax_snippet: syntaxSnippet || null,
+      syntax_answer: null,
+    });
+  }
+
+  for (let slot = activeCount + 1; slot <= QUIZ_MAX; slot += 1) {
+    deleteSlots.push(slot);
+  }
+
+  const settingsRes = await supabase
+    .from("quiz_level_settings")
+    .upsert({ level_key: levelKey, active_question_count: activeCount }, { onConflict: "level_key" });
+  if (settingsRes.error) {
+    setStatus("Could not save quiz count for this level.", "error");
+    return false;
+  }
+
+  if (overrideRows.length > 0) {
+    const upsertRes = await supabase
+      .from("quiz_admin_overrides")
+      .upsert(overrideRows, { onConflict: "level_key,slot_no" });
+    if (upsertRes.error) {
+      setStatus("Could not save quiz overrides.", "error");
+      return false;
+    }
+  }
+
+  if (deleteSlots.length > 0) {
+    const uniqueDeleteSlots = [...new Set(deleteSlots)];
+    const deleteRes = await supabase
+      .from("quiz_admin_overrides")
+      .delete()
+      .eq("level_key", levelKey)
+      .in("slot_no", uniqueDeleteSlots);
+    if (deleteRes.error) {
+      setStatus("Quiz saved, but cleanup of empty override slots failed.", "error");
+      return false;
+    }
+  }
+
+  await loadEditorBundleFromCloud({ silent: true });
+  updateEditorUi();
+  setStatus("Quiz editor saved. Blank cards now fall back to default questions.", "ok");
+  return true;
 }
 
 function ensureEditorBundle() {
@@ -845,6 +1074,62 @@ function ensureEditorBundle() {
     };
   }
   return quizEditorStore[key];
+}
+
+function renderEditorLoadingSkeleton() {
+  questionEditorList.innerHTML = `
+    <article class="question-skeleton" aria-hidden="true">
+      <div class="skeleton-line short"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-grid">
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+      </div>
+    </article>
+    <article class="question-skeleton" aria-hidden="true">
+      <div class="skeleton-line short"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-grid">
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line"></div>
+      </div>
+    </article>
+  `;
+}
+
+function setEditorLoadingState(loading, message = "") {
+  isEditorLoading = Boolean(loading);
+
+  questionEditorList.classList.toggle("is-loading", isEditorLoading);
+  questionEditorList.setAttribute("aria-busy", isEditorLoading ? "true" : "false");
+
+  if (languageButtonsEl) {
+    languageButtonsEl.querySelectorAll("button").forEach((button) => {
+      button.disabled = isEditorLoading;
+    });
+  }
+  if (levelButtonsEl) {
+    levelButtonsEl.querySelectorAll("button").forEach((button) => {
+      button.disabled = isEditorLoading;
+    });
+  }
+
+  removeQuestionBtn.disabled = isEditorLoading;
+  addQuestionBtn.disabled = isEditorLoading;
+  saveLayoutBtn.disabled = isEditorLoading;
+
+  if (isEditorLoading) {
+    renderEditorLoadingSkeleton();
+    if (message) {
+      setStatus(message);
+    }
+  }
 }
 
 function renderLanguageButtons() {
@@ -862,6 +1147,12 @@ function renderLevelButtons() {
 }
 
 function updateQuestionCountUi() {
+  if (isEditorLoading) {
+    removeQuestionBtn.disabled = true;
+    addQuestionBtn.disabled = true;
+    return;
+  }
+
   const bundle = ensureEditorBundle();
   questionCountBadgeEl.textContent = `${bundle.count} / ${QUIZ_MAX}`;
   removeQuestionBtn.disabled = bundle.count <= QUIZ_MIN;
@@ -869,6 +1160,11 @@ function updateQuestionCountUi() {
 }
 
 function renderQuestionEditors() {
+  if (isEditorLoading) {
+    renderEditorLoadingSkeleton();
+    return;
+  }
+
   const bundle = ensureEditorBundle();
   questionEditorList.innerHTML = bundle.questions
     .slice(0, bundle.count)
@@ -886,7 +1182,6 @@ function renderQuestionEditors() {
       const hintValue = escapeHtml(question.hint);
       const promptValue = escapeHtml(question.prompt);
       const syntaxSnippet = escapeHtml(question.syntaxSnippet);
-      const syntaxAnswer = escapeHtml(question.syntaxAnswer);
       const syntaxHidden = question.isSyntax ? "" : "hidden";
 
       return `
@@ -924,14 +1219,12 @@ function renderQuestionEditors() {
               <input id="q-${index}-syntax-toggle" type="checkbox" data-q-index="${index}" data-field="isSyntax" ${
                 question.isSyntax ? "checked" : ""
               } />
-              Treat this as a syntax problem
+              Syntax output problem
             </label>
 
             <div class="syntax-wrap ${syntaxHidden}" data-syntax-block="${index}">
-              <label class="field-label" for="q-${index}-snippet">Syntax Snippet</label>
-              <textarea id="q-${index}-snippet" data-q-index="${index}" data-field="syntaxSnippet" placeholder="Paste buggy syntax or code sample">${syntaxSnippet}</textarea>
-              <label class="field-label" for="q-${index}-syntax-answer">Fixed Syntax Answer</label>
-              <input id="q-${index}-syntax-answer" type="text" data-q-index="${index}" data-field="syntaxAnswer" value="${syntaxAnswer}" placeholder="Write the corrected syntax" />
+              <label class="field-label" for="q-${index}-snippet">Code Snippet</label>
+              <textarea id="q-${index}-snippet" data-q-index="${index}" data-field="syntaxSnippet" placeholder="Paste valid code that students should analyze for output">${syntaxSnippet}</textarea>
             </div>
           </div>
         </article>
@@ -946,6 +1239,7 @@ function updateEditorUi() {
   renderLevelButtons();
   updateQuestionCountUi();
   renderQuestionEditors();
+  saveLayoutBtn.disabled = isEditorLoading;
 }
 
 function updateQuestionField(target) {
@@ -977,17 +1271,21 @@ function updateQuestionField(target) {
 }
 
 function setupEditorListeners() {
-  languageButtonsEl.addEventListener("click", (event) => {
+  languageButtonsEl.addEventListener("click", async (event) => {
+    if (isEditorLoading) return;
     const button = event.target.closest("button[data-language]");
     if (!button) return;
     editorState.language = button.dataset.language;
+    await loadEditorBundleFromCloud({ silent: true });
     updateEditorUi();
   });
 
-  levelButtonsEl.addEventListener("click", (event) => {
+  levelButtonsEl.addEventListener("click", async (event) => {
+    if (isEditorLoading) return;
     const button = event.target.closest("button[data-level]");
     if (!button) return;
     editorState.level = Number(button.dataset.level);
+    await loadEditorBundleFromCloud({ silent: true });
     updateEditorUi();
   });
 
@@ -1015,8 +1313,9 @@ function setupEditorListeners() {
     setStatus("Added one quiz card back to this level design.", "ok");
   });
 
-  saveLayoutBtn.addEventListener("click", () => {
-    setStatus("Quiz layout updated.", "ok");
+  saveLayoutBtn.addEventListener("click", async () => {
+    if (isEditorLoading) return;
+    await saveEditorBundleToCloud();
   });
 
   questionEditorList.addEventListener("input", (event) => {
@@ -1069,6 +1368,7 @@ async function boot() {
   setupRealtimeStats(user);
 
   setupEditorListeners();
+  await loadEditorBundleFromCloud({ silent: true });
   updateEditorUi();
 }
 
