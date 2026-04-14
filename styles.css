@@ -450,6 +450,59 @@ button[disabled] {
   margin-top: 22px;
 }
 
+.ranking-layout {
+  display: flex;
+  justify-content: center;
+}
+
+.ranking-main-panel {
+  margin-top: 0;
+  width: min(980px, 100%);
+}
+
+.ranking-formula-actions {
+  margin-top: 8px;
+}
+
+#open-ranking-formula-btn {
+  margin-top: 0;
+}
+
+.ranking-formula-card {
+  width: min(760px, 96vw);
+}
+
+.ranking-formula-content {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.ranking-formula-content p {
+  margin: 0;
+  color: #e5e5e5;
+  line-height: 1.4;
+}
+
+.ranking-formula-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #cbcbcb;
+  line-height: 1.4;
+}
+
+#ranking-table-body tr:nth-child(1) td {
+  color: #fcf5cf;
+}
+
+#ranking-table-body tr:nth-child(2) td {
+  color: #e2edf9;
+}
+
+#ranking-table-body tr:nth-child(3) td {
+  color: #f5ddd0;
+}
+
 .stats-workspace {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
@@ -1327,6 +1380,10 @@ tbody td {
 
   .levels-detail-layout {
     grid-template-columns: 1fr;
+  }
+
+  .ranking-layout {
+    display: block;
   }
 
   .language-panels-grid {

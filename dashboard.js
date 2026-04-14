@@ -28,6 +28,9 @@ const closeAchievementsDetailBtn = document.getElementById("close-achievements-d
 const achievementsDetailTitleEl = document.getElementById("achievements-detail-title");
 const achievementsDetailListEl = document.getElementById("achievements-detail-list");
 const achievementsDetailCardEl = achievementsDetailPanelEl?.querySelector(".achievements-modal-card") || null;
+const openRankingFormulaBtn = document.getElementById("open-ranking-formula-btn");
+const rankingFormulaPanelEl = document.getElementById("ranking-formula-panel");
+const closeRankingFormulaBtn = document.getElementById("close-ranking-formula-btn");
 
 const javaQuizLevelsEl = document.getElementById("java-quiz-levels");
 const javaPuzzleLevelsEl = document.getElementById("java-puzzle-levels");
@@ -38,6 +41,8 @@ const selectedLevelNameEl = document.getElementById("selected-level-name");
 const levelCompletionEl = document.getElementById("level-completion");
 const levelFailedAttemptsEl = document.getElementById("level-failed-attempts");
 const levelHintsUsedEl = document.getElementById("level-hints-used");
+const rankingStudentCountEl = document.getElementById("ranking-student-count");
+const rankingTableBodyEl = document.getElementById("ranking-table-body");
 
 const languageButtonsEl = document.getElementById("language-buttons");
 const levelButtonsEl = document.getElementById("level-buttons");
@@ -142,6 +147,9 @@ const statsState = {
 
 const LIVE_REFRESH_DEBOUNCE_MS = 500;
 const FALLBACK_POLL_MS = 6000;
+const RANKING_TOP_N = 10;
+const RANKING_HINT_PENALTY = 2;
+const RANKING_COMPLETION_POINTS = 10;
 let activeDashboardPartId = "stats-part";
 const liveState = {
   adminUser: null,
@@ -442,7 +450,7 @@ function closeAchievementDetailPanel() {
     return;
   }
   achievementsDetailPanelEl.classList.add("hidden");
-  document.body.classList.remove("modal-open");
+  syncModalBodyState();
   achievementsSummaryBtn?.setAttribute("aria-expanded", "false");
 }
 
@@ -455,11 +463,34 @@ function openAchievementDetailPanel() {
     return;
   }
 
-  document.body.classList.add("modal-open");
+  syncModalBodyState(true);
   renderAchievementDetailPanel();
   achievementsDetailPanelEl.classList.remove("hidden");
   achievementsSummaryBtn?.setAttribute("aria-expanded", "true");
   closeAchievementsDetailBtn?.focus();
+}
+
+function syncModalBodyState(forceOpen = false) {
+  const achievementOpen = achievementsDetailPanelEl && !achievementsDetailPanelEl.classList.contains("hidden");
+  const rankingFormulaOpen = rankingFormulaPanelEl && !rankingFormulaPanelEl.classList.contains("hidden");
+  document.body.classList.toggle("modal-open", forceOpen || Boolean(achievementOpen || rankingFormulaOpen));
+}
+
+function closeRankingFormulaPanel() {
+  if (!rankingFormulaPanelEl) {
+    return;
+  }
+  rankingFormulaPanelEl.classList.add("hidden");
+  syncModalBodyState();
+}
+
+function openRankingFormulaPanel() {
+  if (!rankingFormulaPanelEl) {
+    return;
+  }
+  rankingFormulaPanelEl.classList.remove("hidden");
+  syncModalBodyState(true);
+  closeRankingFormulaBtn?.focus();
 }
 
 async function loadStudentList(adminUser, options = {}) {
@@ -600,7 +631,7 @@ function clearLiveRefreshTimer() {
 }
 
 function queueRealtimeRefresh(immediate = false) {
-  if (activeDashboardPartId !== "stats-part") return;
+  if (activeDashboardPartId !== "stats-part" && activeDashboardPartId !== "ranking-part") return;
   if (immediate) {
     clearLiveRefreshTimer();
     void runRealtimeRefresh();
@@ -615,7 +646,7 @@ function queueRealtimeRefresh(immediate = false) {
 
 async function runRealtimeRefresh() {
   if (!liveState.adminUser) return;
-  if (activeDashboardPartId !== "stats-part") return;
+  if (activeDashboardPartId !== "stats-part" && activeDashboardPartId !== "ranking-part") return;
 
   if (liveState.refreshInFlight) {
     liveState.refreshQueued = true;
@@ -628,6 +659,11 @@ async function runRealtimeRefresh() {
     const detailVisible = !studentDetailViewEl.classList.contains("hidden");
 
     await loadStudentList(liveState.adminUser, { silent: true });
+
+    if (activeDashboardPartId === "ranking-part") {
+      await loadRankingData({ silent: true });
+      return;
+    }
 
     if (!selectedId) {
       return;
@@ -743,7 +779,25 @@ function setupStatsListeners() {
     }
   });
 
+  openRankingFormulaBtn?.addEventListener("click", () => {
+    openRankingFormulaPanel();
+  });
+
+  closeRankingFormulaBtn?.addEventListener("click", () => {
+    closeRankingFormulaPanel();
+  });
+
+  rankingFormulaPanelEl?.addEventListener("click", (event) => {
+    if (event.target === rankingFormulaPanelEl) {
+      closeRankingFormulaPanel();
+    }
+  });
+
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && rankingFormulaPanelEl && !rankingFormulaPanelEl.classList.contains("hidden")) {
+      closeRankingFormulaPanel();
+      return;
+    }
     if (event.key === "Escape" && achievementsDetailPanelEl && !achievementsDetailPanelEl.classList.contains("hidden")) {
       closeAchievementDetailPanel();
     }
@@ -758,6 +812,153 @@ function setupStatsListeners() {
       renderAllLevelGroups();
       renderLevelDetail();
     });
+  }
+}
+
+function formatRankingScore(score) {
+  const value = Number(score || 0);
+  return Number.isFinite(value) ? value.toFixed(1) : "0.0";
+}
+
+function parseRankableLevel(levelKey) {
+  const text = String(levelKey || "");
+  const match = text.match(/^(java|csharp)_(quiz|puzzle)_(\d+)$/i);
+  if (!match) return null;
+
+  const levelNo = Number(match[3]);
+  if (!Number.isInteger(levelNo) || levelNo <= 0) return null;
+
+  return {
+    type: String(match[2]).toLowerCase(),
+    levelNo,
+  };
+}
+
+function renderRankingView(rows, totalStudents) {
+  if (!rankingTableBodyEl) return;
+
+  const shownCount = Math.min(RANKING_TOP_N, totalStudents);
+  if (rankingStudentCountEl) {
+    rankingStudentCountEl.textContent = `Top ${shownCount} / ${totalStudents}`;
+  }
+
+  if (!rows.length) {
+    rankingTableBodyEl.innerHTML = `
+      <tr>
+        <td colspan="6" class="muted">No ranking data available yet.</td>
+      </tr>
+    `;
+  } else {
+    rankingTableBodyEl.innerHTML = rows
+      .map((row, index) => {
+        return `
+          <tr>
+            <td>#${index + 1}</td>
+            <td>${escapeHtml(row.label)}</td>
+            <td>${formatRankingScore(row.score)}</td>
+            <td>${row.wrongAttempts}</td>
+            <td>${row.hintsUsed}</td>
+            <td>${row.completedLevels}</td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
+}
+
+async function loadRankingData(options = {}) {
+  const { silent = false } = options;
+  if (!rankingTableBodyEl) return;
+
+  if (statsState.students.length === 0 && liveState.adminUser) {
+    await loadStudentList(liveState.adminUser, { silent: true });
+  }
+
+  const students = statsState.students;
+  if (students.length === 0) {
+    renderRankingView([], 0);
+    if (!silent) {
+      setStatus("No students available for ranking.", "error");
+    }
+    return;
+  }
+
+  const userIds = students.map((student) => student.id).filter(Boolean);
+  const [progressRes, metricsRes] = await Promise.all([
+    supabase.from("user_level_progress").select("user_id,level_key,completed").in("user_id", userIds),
+    supabase
+      .from("user_level_metrics")
+      .select("user_id,failed_attempts_total,hints_used_total")
+      .in("user_id", userIds),
+  ]);
+
+  if (progressRes.error || metricsRes.error) {
+    renderRankingView([], students.length);
+    if (!silent) {
+      setStatus("Could not load ranking data. Check table policies for admin access.", "error");
+    }
+    return;
+  }
+
+  const aggregateByUser = new Map(
+    students.map((student) => [
+      student.id,
+      {
+        wrongAttempts: 0,
+        hintsUsed: 0,
+        completedLevels: 0,
+      },
+    ])
+  );
+
+  for (const metric of metricsRes.data || []) {
+    const entry = aggregateByUser.get(metric.user_id);
+    if (!entry) continue;
+    entry.wrongAttempts += asNumber(metric.failed_attempts_total);
+    entry.hintsUsed += asNumber(metric.hints_used_total);
+  }
+
+  for (const progress of progressRes.data || []) {
+    if (!progress.completed) continue;
+    const entry = aggregateByUser.get(progress.user_id);
+    if (!entry) continue;
+
+    const parsed = parseRankableLevel(progress.level_key);
+    if (!parsed) continue;
+    entry.completedLevels += 1;
+  }
+
+  const rankingRows = students.map((student) => {
+    const aggregate = aggregateByUser.get(student.id) || {
+      wrongAttempts: 0,
+      hintsUsed: 0,
+      completedLevels: 0,
+    };
+
+    const score =
+      aggregate.completedLevels * RANKING_COMPLETION_POINTS -
+      aggregate.wrongAttempts -
+      aggregate.hintsUsed * RANKING_HINT_PENALTY;
+
+    return {
+      id: student.id,
+      label: student.label || "student",
+      score,
+      wrongAttempts: aggregate.wrongAttempts,
+      hintsUsed: aggregate.hintsUsed,
+      completedLevels: aggregate.completedLevels,
+    };
+  });
+
+  rankingRows.sort((a, b) => {
+    if (a.score !== b.score) return b.score - a.score;
+    if (a.completedLevels !== b.completedLevels) return b.completedLevels - a.completedLevels;
+    return a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
+  });
+
+  renderRankingView(rankingRows.slice(0, RANKING_TOP_N), rankingRows.length);
+  if (!silent) {
+    setStatus("Ranking updated.", "ok");
   }
 }
 
@@ -783,6 +984,10 @@ function setActivePart(partId) {
 
   if (partId === "stats-part") {
     queueRealtimeRefresh();
+  }
+
+  if (partId === "ranking-part") {
+    void loadRankingData({ silent: true });
   }
 
   animateIn(activePart);
@@ -892,7 +1097,7 @@ function validateQuestionForSave(question, index) {
 async function loadEditorBundleFromCloud(options = {}) {
   const { silent = false } = options;
   const loadId = ++editorLoadSeq;
-  setEditorLoadingState(true, silent ? "Loading quiz editor..." : "Loading quiz editor data from cloud...");
+  setEditorLoadingState(true, silent ? "" : "Loading quiz editor data from cloud...");
 
   try {
     const key = getEditorKey();
