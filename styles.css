@@ -1282,6 +1282,26 @@ body.modal-open {
   gap: 10px;
 }
 
+.hint-inline-grid {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+
+.hint-inline-grid > :first-child {
+  flex: 0 0 calc((100% - 10px) / 2);
+  max-width: calc((100% - 10px) / 2);
+}
+
+.hint-inline-grid > :last-child {
+  flex: 0 0 200px;
+  margin-left: auto;
+}
+
+.hint-editor-input {
+  width: 100%;
+}
+
 .syntax-wrap {
   border: 1px dashed rgba(255, 255, 255, 0.28);
   border-radius: 12px;
@@ -1393,6 +1413,19 @@ tbody td {
   .choices-grid,
   .inline-grid {
     grid-template-columns: 1fr;
+  }
+
+  .hint-inline-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .hint-inline-grid > :first-child,
+  .hint-inline-grid > :last-child {
+    flex: initial;
+    max-width: none;
+    width: 100%;
+    margin-left: 0;
   }
 }
 

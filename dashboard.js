@@ -1404,10 +1404,10 @@ function renderQuestionEditors() {
               ${choicesHtml}
             </div>
 
-            <div class="inline-grid">
+            <div class="inline-grid hint-inline-grid">
               <div>
                 <label class="field-label" for="q-${index}-hint">Hint</label>
-                <input id="q-${index}-hint" type="text" data-q-index="${index}" data-field="hint" value="${hintValue}" placeholder="Type a hint to help answer this question" />
+                <input id="q-${index}-hint" class="hint-editor-input" type="text" data-q-index="${index}" data-field="hint" value="${hintValue}" placeholder="Type a hint to help answer this question" />
               </div>
               <div>
                 <label class="field-label" for="q-${index}-correct">Correct Choice</label>
