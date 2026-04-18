@@ -149,7 +149,7 @@ const LIVE_REFRESH_DEBOUNCE_MS = 500;
 const FALLBACK_POLL_MS = 6000;
 const RANKING_TOP_N = 10;
 const RANKING_HINT_PENALTY = 2;
-const RANKING_COMPLETION_POINTS = 10;
+const RANKING_COMPLETION_POINTS = 50;
 let activeDashboardPartId = "stats-part";
 const liveState = {
   adminUser: null,
