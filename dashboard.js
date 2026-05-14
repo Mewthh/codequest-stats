@@ -1038,7 +1038,7 @@ function makeEmptyQuestion(index) {
     hint: "",
     isSyntax: false,
     syntaxSnippet: "",
-    title: `Quiz ${index + 1}`,
+    title: `Question ${index + 1}`,
   };
 }
 
@@ -1064,7 +1064,7 @@ function mapCloudRowToQuestion(row, index) {
     hint: String(row?.hint_text || ""),
     isSyntax,
     syntaxSnippet: isSyntax ? String(row?.syntax_snippet || "") : "",
-    title: `Quiz ${index + 1}`,
+    title: `Question ${index + 1}`,
   };
 }
 
@@ -1393,7 +1393,7 @@ function renderQuestionEditors() {
         <article class="question-card" data-card-index="${index}">
           <header>
             <h3>${escapeHtml(question.title)}</h3>
-            <p class="q-index">QUIZ #${index + 1}</p>
+            <p class="q-index">QUESTION #${index + 1}</p>
           </header>
 
           <div class="question-form">
