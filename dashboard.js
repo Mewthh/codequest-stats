@@ -58,7 +58,8 @@ const pageLoaderText = document.getElementById("page-loader-text");
 const TRANSITION_DELAY_MS = 520;
 
 const QUIZ_MIN = 1;
-const QUIZ_MAX = 5;
+const QUIZ_MAX = 10;
+const QUIZ_DEFAULT = 5;
 const LANGUAGES = [
   { value: "java", label: "Java" },
   { value: "csharp", label: "C#" },
@@ -1130,8 +1131,8 @@ async function loadEditorBundleFromCloud(options = {}) {
       return false;
     }
 
-    const activeCountRaw = Number(settingsRes.data?.[0]?.active_question_count || effectiveRes.data?.length || QUIZ_MAX);
-    const activeCount = Math.min(QUIZ_MAX, Math.max(QUIZ_MIN, Number.isFinite(activeCountRaw) ? activeCountRaw : QUIZ_MAX));
+    const activeCountRaw = Number(settingsRes.data?.[0]?.active_question_count || effectiveRes.data?.length || QUIZ_DEFAULT);
+    const activeCount = Math.min(QUIZ_MAX, Math.max(QUIZ_MIN, Number.isFinite(activeCountRaw) ? activeCountRaw : QUIZ_DEFAULT));
 
     const questions = Array.from({ length: QUIZ_MAX }, (_, idx) => makeEmptyQuestion(idx));
     for (const row of effectiveRes.data || []) {
@@ -1173,7 +1174,7 @@ async function saveEditorBundleToCloud() {
     return false;
   }
 
-  const activeCount = Math.min(QUIZ_MAX, Math.max(QUIZ_MIN, Number(bundle.count || QUIZ_MAX)));
+  const activeCount = Math.min(QUIZ_MAX, Math.max(QUIZ_MIN, Number(bundle.count || QUIZ_DEFAULT)));
   const activeQuestions = bundle.questions.slice(0, activeCount);
   const overrideRows = [];
   const deleteSlots = [];
@@ -1274,7 +1275,7 @@ function ensureEditorBundle() {
   const key = getEditorKey();
   if (!quizEditorStore[key]) {
     quizEditorStore[key] = {
-      count: QUIZ_MAX,
+      count: QUIZ_DEFAULT,
       questions: Array.from({ length: QUIZ_MAX }, (_, idx) => makeEmptyQuestion(idx)),
     };
   }
